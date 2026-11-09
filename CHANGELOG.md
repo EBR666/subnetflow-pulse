@@ -1,5 +1,11 @@
 # Changelog — SubNetFlow Pulse
 
+## 1.0.4 — 2026-11-09
+
+### Corregido
+- **Nombre del equipo Lenovo:** se veía solo el tipo de máquina (`10T8S5W400`). Ahora se toma también el nombre comercial que Lenovo guarda en `product_version`, y se muestra `ThinkCentre M720q (10T8S5W400)`. En otros fabricantes no cambia, porque ese campo suele ser una revisión ("1.0").
+- **Aviso «el servidor pide esperar» justo después de instalar:** el servicio arrancaba unos segundos después del reporte de prueba de `install.sh`, y el servidor rechaza dos del mismo nodo con menos de 20 s. Ahora espera de 20 a 30 s al arrancar.
+
 ## 1.0.3 — 2026-11-09
 
 ### Corregido

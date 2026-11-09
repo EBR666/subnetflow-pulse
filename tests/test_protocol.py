@@ -88,6 +88,13 @@ class Configuracion(unittest.TestCase):
 
 
 class Recoleccion(unittest.TestCase):
+    def test_nombre_comercial_de_lenovo(self):
+        self.assertEqual(pulse.product_label("LENOVO", "10T8S5W400", "ThinkCentre M720q"), "ThinkCentre M720q (10T8S5W400)")
+        self.assertEqual(pulse.product_label("LENOVO", "10T8S5W400", ""), "10T8S5W400")
+        self.assertEqual(pulse.product_label("LENOVO", "10T8S5W400", "To Be Filled By O.E.M."), "10T8S5W400")
+        self.assertEqual(pulse.product_label("Dell Inc.", "OptiPlex 3060", "1.0"), "OptiPlex 3060", "otros fabricantes: la versión es una revisión")
+        self.assertEqual(pulse.product_label("LENOVO", "ThinkCentre M720q", "ThinkCentre M720q"), "ThinkCentre M720q")
+
     def test_lee_la_configuracion_de_un_lxc(self):
         self.assertEqual(pulse._kv("name=eth0,bridge=vmbr0,ip=192.0.2.10/24,tag=40"),
                          {"name": "eth0", "bridge": "vmbr0", "ip": "192.0.2.10/24", "tag": "40"})

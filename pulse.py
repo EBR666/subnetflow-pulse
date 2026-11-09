@@ -27,7 +27,7 @@ import urllib.parse
 import urllib.request
 import zlib
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 NAME = "subnetflow-pulse"
 PROTO = "snf-pulse-v1"
 SCHEMA = "subnetflow-node-1"
@@ -154,9 +154,24 @@ def cpu_sample(seconds=1.0):
         return None
 
 
+GENERIC_DMI = re.compile(r"^(to be filled.*|default string|system (product name|version)|not (specified|applicable)|none|o\.e\.m\.?|\d+(\.\d+)*)$", re.I)
+
+
+def product_label(vendor, product, version):
+    """Nombre del equipo para mostrar. 1.0.4: Lenovo guarda el tipo de máquina en product_name (10T8S5W400) y el nombre
+    comercial en product_version (ThinkCentre M720q): se muestran los dos. Otros fabricantes usan product_version para
+    una revisión ("1.0"), que no se agrega."""
+    product, version = (product or "").strip(), (version or "").strip()
+    if vendor.strip().upper() == "LENOVO" and version and not GENERIC_DMI.match(version) and version.lower() != product.lower() and " " in version:
+        return "%s (%s)" % (version, product) if product else version
+    return product
+
+
 def dmi():
     base = "/sys/class/dmi/id/"
-    return {"vendor": read_file(base + "sys_vendor"), "product": read_file(base + "product_name"), "chassis_type": read_file(base + "chassis_type")}
+    vendor = read_file(base + "sys_vendor")
+    product = product_label(vendor, read_file(base + "product_name"), read_file(base + "product_version"))
+    return {"vendor": vendor, "product": product, "chassis_type": read_file(base + "chassis_type")}
 
 
 def memory_info():
@@ -368,7 +383,9 @@ def send_once(conf):
 
 def run_loop(conf):
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    time.sleep(random.uniform(0, 10))  # varios nodos reiniciados a la vez no reportan en el mismo segundo
+    # 1.0.4: espera de 20 a 30 s al arrancar. Así el primer reporte no llega pegado al de prueba de install.sh (el servidor
+    # rechaza dos del mismo nodo con menos de 20 s), y varios nodos reiniciados a la vez no reportan en el mismo segundo.
+    time.sleep(random.uniform(20, 30))
     backoff = 60
     while True:
         try:
