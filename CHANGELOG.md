@@ -1,5 +1,12 @@
 # Changelog — SubNetFlow Pulse
 
+## 1.0.1 — 2026-11-09
+
+### Corregido
+- **`install.sh` no esperaba el token:** al pegar los cuatro comandos de la guía de una vez, la pregunta del token tomaba la línea siguiente (vacía). Ahora lee el token de la terminal (`/dev/tty`) y da tres intentos.
+- **Un token inválido no detenía el instalador:** la validación corría dentro de una subshell y su error no frenaba nada; se guardaba un token vacío y la prueba fallaba con un traceback. Ahora se valida antes de instalar nada, y sin un token válido no se toca el sistema.
+- **`pulse.py` con un token vacío o incompleto** mostraba un traceback de Python. Ahora dice que se corrija con `./install.sh --set-token`.
+
 ## 1.0.0 — 2026-11-09
 
 Primera versión. Requiere SubNetFlow 1.9.97 o posterior.

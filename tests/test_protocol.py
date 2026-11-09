@@ -74,6 +74,12 @@ class Configuracion(unittest.TestCase):
         self.assertEqual(c["url"], "https://snf.example.test")
         self.assertEqual(c["key"].hex(), V["key_hex"])
 
+    def test_token_vacio_o_incompleto_da_un_mensaje_claro(self):
+        for token in ("", "snfp_corto"):
+            with self.assertRaises(SystemExit) as cm:
+                pulse.load_conf(self._conf("SNF_URL=https://snf.example.test\nSNF_TOKEN=%s\n" % token))
+            self.assertIn("--set-token", str(cm.exception.code))
+
     def test_exige_permisos_600_y_https(self):
         with self.assertRaises(SystemExit):
             pulse.load_conf(self._conf("SNF_URL=https://snf.example.test\nSNF_TOKEN=%s\n" % V["token"], mode=0o644))

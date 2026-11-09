@@ -6,7 +6,7 @@ CPU y RAM en uso, discos, almacenamiento, interfaces de red con su velocidad y c
 
 | | |
 |---|---|
-| **Versión** | 1.0.0 |
+| **Versión** | 1.0.1 |
 | **Protocolo** | `snf-pulse-v1` (ver [PROTOCOL.md](PROTOCOL.md)) |
 | **Requisitos** | Proxmox VE 8 o 9, `python3` y `python3-cryptography` (paquete de Debian) |
 | **Compatible con** | SubNetFlow 1.9.97 o posterior |

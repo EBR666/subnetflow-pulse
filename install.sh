@@ -48,15 +48,30 @@ if ! python3 -c 'import cryptography' 2>/dev/null; then
   apt-get install -y python3-cryptography
 fi
 
+# Deja el token en $TOKEN. Se lee de la terminal (/dev/tty), no de la entrada estándar: así, si se pegan varios comandos
+# de una vez, la pregunta espera al token en lugar de tragarse la línea siguiente. Tres intentos antes de rendirse.
+# 1.0.1: antes se llamaba dentro de $(…) y su validación no detenía el instalador (guardaba un token vacío).
+TOKEN=""
 read_token() {
-  local t=""
+  local t="" i
   if [ -n "$TOKEN_FILE" ]; then
-    t="$(tr -d ' \r\n' < "$TOKEN_FILE")"
-  else
-    read -r -s -p "Pega el token de la sede (snfp_…): " t; echo
+    t="$(tr -d ' \t\r\n' < "$TOKEN_FILE")"
+    [[ "$t" =~ $TOKEN_RE ]] || die "El archivo $TOKEN_FILE no contiene un token válido (snfp_<id>_<secreto>)."
+    TOKEN="$t"
+    return 0
   fi
-  [[ "$t" =~ $TOKEN_RE ]] || die "El token no tiene la forma snfp_<id>_<secreto>. Cópialo completo desde SubNetFlow."
-  printf '%s' "$t"
+  [ -r /dev/tty ] || die "No hay una terminal para pedir el token. Usa --token-file /ruta/al/archivo."
+  for i in 1 2 3; do
+    read -r -s -p "Pega el token de la sede (snfp_…) y pulsa Enter: " t < /dev/tty || true
+    echo >&2
+    t="$(printf '%s' "$t" | tr -d ' \t\r\n')"
+    if [[ "$t" =~ $TOKEN_RE ]]; then
+      TOKEN="$t"
+      return 0
+    fi
+    echo "✗ Eso no es un token completo: empieza por snfp_ y tiene 74 caracteres (intento $i de 3)." >&2
+  done
+  die "No se recibió un token válido. Cópialo de nuevo en SubNetFlow con el botón ⧉ Copiar y vuelve a ejecutar el instalador."
 }
 
 write_conf() {
@@ -84,7 +99,8 @@ case "$MODE" in
   set-token)
     [ -f "$CONF" ] || die "No hay configuración en $CONF: instala primero con --url."
     URL="$(sed -n 's/^SNF_URL=//p' "$CONF" | head -n1)"
-    write_conf "$URL" "$(read_token)"
+    read_token
+    write_conf "$URL" "$TOKEN"
     say "Token actualizado."
     ;;
   upgrade)
@@ -97,8 +113,9 @@ case "$MODE" in
     [ -n "$URL" ] || die "Indica la dirección de SubNetFlow: --url https://subnetflow.ejemplo.com"
     URL="${URL%/}"
     [[ "$URL" =~ ^https://[^/[:space:]]+$ ]] || die "La dirección debe ser https://dominio, sin ruta."
+    read_token   # antes de tocar nada: sin token válido no se instala
     install_program
-    write_conf "$URL" "$(read_token)"
+    write_conf "$URL" "$TOKEN"
     ;;
 esac
 
@@ -108,6 +125,7 @@ if python3 "$PREFIX/pulse.py" test; then
   systemctl restart subnetflow-pulse.service
   say "Servicio activo. Registro: journalctl -u subnetflow-pulse -f"
 else
-  echo "⚠ La prueba falló: el servicio no se activó. Revisa la dirección, el token y que el nodo tenga la hora al día (NTP)." >&2
+  echo "⚠ La prueba falló: el servicio no se activó. La configuración quedó guardada." >&2
+  echo "  Revisa la dirección y la hora del nodo (NTP). Para corregir el token: ./install.sh --set-token" >&2
   exit 1
 fi

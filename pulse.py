@@ -26,7 +26,7 @@ import urllib.error
 import urllib.request
 import zlib
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 NAME = "subnetflow-pulse"
 PROTO = "snf-pulse-v1"
 SCHEMA = "subnetflow-node-1"
@@ -283,7 +283,10 @@ def load_conf(path):
     url = conf.get("SNF_URL", "").rstrip("/")
     if not url.startswith("https://") and not (url.startswith("http://") and conf.get("SNF_ALLOW_HTTP") == "yes"):
         sys.exit("SNF_URL debe empezar por https:// (por HTTP, solo con SNF_ALLOW_HTTP=yes y en una red de pruebas).")
-    agent_id, secret = parse_token(conf.get("SNF_TOKEN", ""))
+    try:
+        agent_id, secret = parse_token(conf.get("SNF_TOKEN", ""))
+    except ValueError:
+        sys.exit("El token de %s está vacío o incompleto. Cámbialo con: sudo ./install.sh --set-token" % path)
     return {"url": url, "agent_id": agent_id, "key": derive_key(agent_id, secret), "ca": conf.get("SNF_CA_FILE") or None}
 
 
