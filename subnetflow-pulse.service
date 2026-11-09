@@ -1,0 +1,33 @@
+[Unit]
+Description=SubNetFlow Pulse (agente de nodos Proxmox VE para SubNetFlow)
+Documentation=https://github.com/EBR666/subnetflow-pulse
+After=network-online.target pve-cluster.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/subnetflow-pulse/pulse.py run
+Restart=always
+RestartSec=60
+# root: pvesh, dmidecode y /etc/pve lo exigen. El agente solo lee; el aislamiento de abajo limita lo que podría hacer.
+User=root
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+MemoryMax=128M
+CPUQuota=20%
+
+[Install]
+WantedBy=multi-user.target

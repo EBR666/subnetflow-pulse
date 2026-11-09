@@ -1,0 +1,15 @@
+{
+  "_comment": "Vectores del protocolo snf-pulse-v1. Token de PRUEBA (no es de ninguna sede). Los usan tests/test_protocol.py y las pruebas de SubNetFlow.",
+  "token": "snfp_0123456789ABCDEF_ABCDEFGHJKMNPQRSTVWXYZ0123456789ABCDEFGHJKMNPQRSTVWX",
+  "key_hex": "dbf6d1c64d59f9b9e619181c74d8c7fa8acb9b9a752473bd1002cabcc9c1ece8",
+  "server_sealed_req": {
+    "envelope": {"v": 1, "id": "0123456789ABCDEF", "ts": 1762600000, "z": 1, "n": "BwcHBwcHBwcHBwcH", "c": "4ZMLh1G9WYUtPq04kI6zQpbx2YXU6ABOjoGnBykDUXAPxMAoaw67NwQtrEYEq/kOCO6FpA=="},
+    "direction": "req",
+    "plain": {"hola": "mundo", "n": [1, 2, 3]}
+  },
+  "agent_sealed_res": {
+    "envelope": {"v": 1, "id": "0123456789ABCDEF", "ts": 1762600001, "z": 1, "n": "CQkJCQkJCQkJCQkJ", "c": "K0tIGcuSssNxUl9xoYJvjh66AUs2b0NT2uX1SPVK84l1fEgwrla/7IpnG9Qlwdtozdr8Dw=="},
+    "direction": "res",
+    "plain": {"ok": true, "interval_s": 300}
+  }
+}
