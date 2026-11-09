@@ -1,5 +1,15 @@
 # Changelog — SubNetFlow Pulse
 
+## 1.0.2 — 2026-11-09
+
+### Nuevo
+- **Cloudflare Access:** el agente puede enviar un token de servicio (`CF-Access-Client-Id` y `CF-Access-Client-Secret`). Se guarda con `./install.sh --cf-access`, o junto con la instalación (`--url … --cf-access`). Ver README, sección 7.1.
+
+### Corregido
+- **"Expecting value: line 1 column 1":** con el dominio detrás de Cloudflare Access, el agente seguía el `302` hacia la página de inicio de sesión y recibía HTML. Ahora no sigue redirecciones, y explica qué pasó y cómo resolverlo.
+- **Respuestas que no vienen de SubNetFlow** (un proxy, una página de error): se informan con su código y su tipo, sin un error de Python.
+- **`--set-token` y `--upgrade`** conservan el token de Cloudflare Access y la CA propia que ya estaban en `agent.conf`.
+
 ## 1.0.1 — 2026-11-09
 
 ### Corregido

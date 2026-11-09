@@ -44,6 +44,7 @@ Solo en Nodos y en instalaciones de SubNetFlow propios o con autorización escri
 | **Anti-repetición** | Ventana de ±5 minutos y nonce aleatorio de 96 bits que el servidor no acepta dos veces. |
 | **Aislamiento por sede** | El token solo escribe en su sede. En el servidor, los datos quedan cifrados con la llave de la sede. |
 | **Mínimo privilegio en los datos** | Solo lectura. No envía contraseñas, claves ni contenido de discos o VM. `pulse.py dry-run` muestra exactamente lo que se enviaría. |
+| **Cloudflare Access** | Si el dominio está detrás de Access, el Agente puede presentar un token de servicio (`CF-Access-Client-Id` y `CF-Access-Client-Secret`), guardado en `agent.conf`. No sigue redirecciones: un `302` se informa como bloqueo de Access, en vez de reenviar el reporte a otro destino. |
 | **En el nodo** | `agent.conf` con permisos `600` de root (el Agente se niega a arrancar con permisos más abiertos). El token se pide sin eco o se lee de un archivo, para que no quede en el historial. El servicio corre con `NoNewPrivileges`, `ProtectHome`, `PrivateTmp`, `ProtectKernelModules`, `RestrictAddressFamilies`, `MemoryMax` y `CPUQuota`. |
 | **Dependencias** | Solo la biblioteca estándar de Python y `python3-cryptography` del sistema. Ninguna dependencia de PyPI. |
 | **Límites del servidor** | Cuerpo de hasta 4 MB, descompresión acotada, misma respuesta para todo rechazo y bloqueo de 15 minutos tras 30 rechazos desde una IP. |

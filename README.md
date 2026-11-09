@@ -6,7 +6,7 @@ CPU y RAM en uso, discos, almacenamiento, interfaces de red con su velocidad y c
 
 | | |
 |---|---|
-| **Versión** | 1.0.1 |
+| **Versión** | 1.0.2 |
 | **Protocolo** | `snf-pulse-v1` (ver [PROTOCOL.md](PROTOCOL.md)) |
 | **Requisitos** | Proxmox VE 8 o 9, `python3` y `python3-cryptography` (paquete de Debian) |
 | **Compatible con** | SubNetFlow 1.9.97 o posterior |
@@ -120,6 +120,26 @@ Al desinstalar, revoca el token en SubNetFlow si no vas a reinstalar el agente.
 | `el servidor pide esperar` | Dos reportes del mismo nodo con menos de 20 s de diferencia: el agente espera y sigue. |
 | `Falta python3-cryptography` | `apt-get install -y python3-cryptography`. |
 | 403 / 1020 de Cloudflare | Una regla de WAF o de bots bloquea al agente. Permite `POST /api/pulse/v1/report` en tu dominio. |
+| `Cloudflare Access bloquea al agente` | El dominio está protegido con Cloudflare Access y el agente no puede iniciar sesión como una persona. Ver 7.1. |
+
+### 7.1 SubNetFlow detrás de Cloudflare Access
+
+Si el dominio de SubNetFlow está protegido con **Cloudflare Access** (Zero Trust), toda petición sin sesión recibe un `302`
+hacia la página de inicio de sesión, también la del agente. Hay dos formas de dejarlo pasar.
+
+**Opción A — token de servicio (recomendada):** Access sigue protegiendo la ruta; solo pasa quien tenga el token de servicio.
+
+1. En Cloudflare: **Zero Trust → Access → Service Auth → Service Tokens → Create Service Token**. Ponle un nombre (`subnetflow-pulse`) y copia el **Client ID** y el **Client Secret**: el secreto se ve una sola vez.
+2. **Zero Trust → Access → Applications → Add an application → Self-hosted**:
+   - dominio: el de SubNetFlow; ruta: `api/pulse/v1/report`;
+   - política: acción **Service Auth**, regla *Include → Service Token →* el que creaste.
+
+   Una aplicación con ruta es más específica que la del dominio completo, así que manda en esa ruta.
+3. En cada nodo: `sudo ./install.sh --cf-access`. Pide el Client ID y el Client Secret sin mostrar el secreto, los guarda en `agent.conf` y hace la prueba. El agente los envía en `CF-Access-Client-Id` y `CF-Access-Client-Secret`.
+
+**Opción B — Bypass:** la misma aplicación del paso 2, pero con la acción **Bypass** (*Include → Everyone*), y sin tocar el nodo. Es más simple; la ruta queda protegida solo por el cifrado y el token del propio agente, que bastan, pero pierdes la capa de Access.
+
+En los dos casos, el resto del dominio sigue detrás de Access.
 
 ## 8. Estructura del repositorio
 

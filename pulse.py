@@ -23,10 +23,11 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zlib
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 NAME = "subnetflow-pulse"
 PROTO = "snf-pulse-v1"
 SCHEMA = "subnetflow-node-1"
@@ -42,6 +43,18 @@ log = logging.getLogger(NAME)
 
 class Unauthorized(Exception):
     """El servidor rechazó el token (revocado, rotado o inválido) o el sobre."""
+
+
+class Foreign(Exception):
+    """Respondió algo que no es SubNetFlow (un proxy, Cloudflare Access, una página de error)."""
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """1.0.2: no se siguen redirecciones. Un 302 delante de SubNetFlow suele ser Cloudflare Access pidiendo inicio de
+    sesión; seguirlo convertía el POST en GET y devolvía la página de login (\"Expecting value\")."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise Foreign("el servidor redirige a %s (HTTP %s)" % (urllib.parse.urlsplit(newurl).netloc or newurl, code))
 
 
 class TooSoon(Exception):
@@ -287,32 +300,55 @@ def load_conf(path):
         agent_id, secret = parse_token(conf.get("SNF_TOKEN", ""))
     except ValueError:
         sys.exit("El token de %s está vacío o incompleto. Cámbialo con: sudo ./install.sh --set-token" % path)
-    return {"url": url, "agent_id": agent_id, "key": derive_key(agent_id, secret), "ca": conf.get("SNF_CA_FILE") or None}
+    cf = (conf.get("SNF_CF_ACCESS_CLIENT_ID", ""), conf.get("SNF_CF_ACCESS_CLIENT_SECRET", ""))
+    return {"url": url, "agent_id": agent_id, "key": derive_key(agent_id, secret), "ca": conf.get("SNF_CA_FILE") or None,
+            "cf_access": cf if all(cf) else None}
+
+
+def _foreign_hint(detail):
+    """Mensaje para una respuesta que no viene de SubNetFlow."""
+    if "cloudflareaccess.com" in detail or "Cloudflare-Access" in detail:
+        return ("Cloudflare Access bloquea al agente (%s). Crea un token de servicio en Zero Trust → Access → Service Auth, "
+                "dale acceso a /api/pulse/v1/report y guárdalo con: sudo ./install.sh --cf-access. Ver README, sección 7." % detail)
+    return "la respuesta no viene de SubNetFlow (%s). Revisa SNF_URL y el proxy o WAF delante de SubNetFlow." % detail
 
 
 def post(conf, body, timeout=30):
+    """POST del sobre. Devuelve (código, JSON, cabeceras); si la respuesta no es JSON de SubNetFlow, lanza Foreign."""
     data = json.dumps(body, separators=(",", ":")).encode()
-    req = urllib.request.Request(conf["url"] + REPORT_PATH, data=data, method="POST", headers={
-        "Content-Type": "application/json", "Accept": "application/json", "User-Agent": "%s/%s" % (NAME, VERSION)})
-    ctx = None
+    headers = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "%s/%s" % (NAME, VERSION)}
+    if conf.get("cf_access"):
+        headers["CF-Access-Client-Id"], headers["CF-Access-Client-Secret"] = conf["cf_access"]
+    req = urllib.request.Request(conf["url"] + REPORT_PATH, data=data, method="POST", headers=headers)
+    handlers = [_NoRedirect()]
     if conf["url"].startswith("https://"):
         ctx = ssl.create_default_context(cafile=conf["ca"]) if conf["ca"] else ssl.create_default_context()
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        handlers.append(urllib.request.HTTPSHandler(context=ctx))
+    opener = urllib.request.build_opener(*handlers)
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
-            return r.status, json.loads(r.read(1 << 20).decode("utf-8")), r.headers
+        r = opener.open(req, timeout=timeout)
+        status, hdrs, raw = r.status, r.headers, r.read(1 << 20)
+        r.close()
     except urllib.error.HTTPError as e:
-        try:
-            payload = json.loads(e.read(65536).decode("utf-8"))
-        except Exception:
-            payload = {}
-        return e.code, payload, e.headers
+        status, hdrs, raw = e.code, e.headers, e.read(65536)
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError
+    except Exception:
+        auth = hdrs.get("Www-Authenticate", "") if hdrs else ""
+        raise Foreign("HTTP %s, %s%s" % (status, (hdrs.get("Content-Type", "?") if hdrs else "?").split(";")[0], ", " + auth[:60] if auth else ""))
+    return status, payload, hdrs
 
 
 def send_once(conf):
     report = collect()
     env = seal(conf["key"], "req", conf["agent_id"], report)
-    status, resp, headers = post(conf, env)
+    try:
+        status, resp, headers = post(conf, env)
+    except Foreign as e:
+        raise RuntimeError(_foreign_hint(str(e)))
     if status == 401:
         raise Unauthorized(resp.get("error", "no autorizado"))
     if status == 429:

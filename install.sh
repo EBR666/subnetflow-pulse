@@ -3,9 +3,10 @@
 #
 #   sudo ./install.sh --url https://subnetflow.ejemplo.com   instala o actualiza y pide el token de la sede
 #   sudo ./install.sh --set-token                             cambia el token (tras rotarlo en SubNetFlow)
+#   sudo ./install.sh --cf-access                             guarda el token de servicio de Cloudflare Access
 #   sudo ./install.sh --upgrade                               actualiza el programa y conserva la configuración
 #
-# El token se pide por teclado (sin eco) o se lee de --token-file: así no queda en el historial de la consola.
+# Los secretos se piden por teclado (sin eco) o se leen de --token-file: así no quedan en el historial de la consola.
 set -euo pipefail
 
 PREFIX=/opt/subnetflow-pulse
@@ -19,6 +20,7 @@ URL=""
 TOKEN_FILE=""
 MODE="install"
 ASSUME_YES="no"
+CF_ACCESS="no"
 
 die() { echo "✗ $*" >&2; exit 1; }
 say() { echo "• $*"; }
@@ -28,12 +30,15 @@ while [ $# -gt 0 ]; do
     --url) URL="${2:-}"; shift 2 ;;
     --token-file) TOKEN_FILE="${2:-}"; shift 2 ;;
     --set-token) MODE="set-token"; shift ;;
+    --cf-access) CF_ACCESS="yes"; shift ;;
     --upgrade) MODE="upgrade"; shift ;;
     --yes|-y) ASSUME_YES="yes"; shift ;;
-    -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
     *) die "Opción desconocida: $1 (usa --help)" ;;
   esac
 done
+# --cf-access solo (sin --url ni --set-token): actualiza la configuración que ya existe.
+if [ "$CF_ACCESS" = "yes" ] && [ "$MODE" = "install" ] && [ -z "$URL" ] && [ -f "$CONF" ]; then MODE="cf-access"; fi
 
 [ "$(id -u)" -eq 0 ] || die "Ejecútalo como root (sudo)."
 command -v python3 >/dev/null || die "Falta python3."
@@ -42,11 +47,14 @@ command -v pvesh >/dev/null || echo "⚠ No se encontró pvesh: este equipo no p
 # python3-cryptography: AES-256-GCM y HKDF del paquete de Debian (el agente no trae criptografía propia).
 if ! python3 -c 'import cryptography' 2>/dev/null; then
   if [ "$ASSUME_YES" != "yes" ]; then
-    read -r -p "Falta python3-cryptography. ¿Instalarlo con apt? [s/N] " ans
+    read -r -p "Falta python3-cryptography. ¿Instalarlo con apt? [s/N] " ans < /dev/tty
     case "$ans" in s|S|si|SI|sí|y|Y) ;; *) die "Instálalo con: apt-get install -y python3-cryptography" ;; esac
   fi
   apt-get install -y python3-cryptography
 fi
+
+# Valor guardado de una clave de agent.conf (vacío si no existe).
+existing() { [ -f "$CONF" ] && sed -n "s/^$1=//p" "$CONF" | head -n1 || true; }
 
 # Deja el token en $TOKEN. Se lee de la terminal (/dev/tty), no de la entrada estándar: así, si se pegan varios comandos
 # de una vez, la pregunta espera al token en lugar de tragarse la línea siguiente. Tres intentos antes de rendirse.
@@ -74,16 +82,53 @@ read_token() {
   die "No se recibió un token válido. Cópialo de nuevo en SubNetFlow con el botón ⧉ Copiar y vuelve a ejecutar el instalador."
 }
 
+# 1.0.2: token de servicio de Cloudflare Access (Zero Trust → Access → Service Auth). Deja $CF_ID y $CF_SECRET.
+CF_ID=""
+CF_SECRET=""
+read_cf_access() {
+  local id="" secret="" i
+  [ -r /dev/tty ] || die "No hay una terminal para pedir el token de Cloudflare Access."
+  echo "Token de servicio de Cloudflare Access (Zero Trust → Access → Service Auth → Service Tokens)." >&2
+  for i in 1 2 3; do
+    read -r -p "Client ID (termina en .access): " id < /dev/tty || true
+    id="$(printf '%s' "$id" | tr -d ' \t\r\n')"
+    [[ "$id" =~ ^[0-9a-f]{32}\.access$ ]] && break
+    echo "✗ El Client ID tiene 32 caracteres hexadecimales y termina en .access (intento $i de 3)." >&2
+    id=""
+  done
+  [ -n "$id" ] || die "No se recibió un Client ID válido."
+  for i in 1 2 3; do
+    read -r -s -p "Client Secret (no se muestra): " secret < /dev/tty || true
+    echo >&2
+    secret="$(printf '%s' "$secret" | tr -d ' \t\r\n')"
+    [[ "$secret" =~ ^[0-9a-f]{64}$ ]] && break
+    echo "✗ El Client Secret tiene 64 caracteres hexadecimales (intento $i de 3)." >&2
+    secret=""
+  done
+  [ -n "$secret" ] || die "No se recibió un Client Secret válido."
+  CF_ID="$id"
+  CF_SECRET="$secret"
+}
+
+# Escribe agent.conf (0600 root) y conserva lo que no se cambia en esta ejecución (Cloudflare Access, CA propia).
 write_conf() {
   local url="$1" token="$2"
+  local cf_id="${CF_ID:-$(existing SNF_CF_ACCESS_CLIENT_ID)}"
+  local cf_secret="${CF_SECRET:-$(existing SNF_CF_ACCESS_CLIENT_SECRET)}"
+  local ca="$(existing SNF_CA_FILE)"
   install -d -m 0700 -o root -g root "$CONF_DIR"
   umask 077
-  cat > "$CONF.tmp" <<EOF
-# SubNetFlow Pulse — configuración del agente. Solo root puede leerla: contiene el token de la sede.
-SNF_URL=$url
-SNF_TOKEN=$token
-# SNF_CA_FILE=/ruta/a/ca.pem   (opcional: CA propia si el certificado de SubNetFlow no es público)
-EOF
+  {
+    echo "# SubNetFlow Pulse — configuración del agente. Solo root puede leerla: contiene el token de la sede."
+    echo "SNF_URL=$url"
+    echo "SNF_TOKEN=$token"
+    if [ -n "$cf_id" ] && [ -n "$cf_secret" ]; then
+      echo "# Cloudflare Access: token de servicio para pasar la protección del dominio."
+      echo "SNF_CF_ACCESS_CLIENT_ID=$cf_id"
+      echo "SNF_CF_ACCESS_CLIENT_SECRET=$cf_secret"
+    fi
+    if [ -n "$ca" ]; then echo "SNF_CA_FILE=$ca"; else echo "# SNF_CA_FILE=/ruta/a/ca.pem   (opcional: CA propia si el certificado de SubNetFlow no es público)"; fi
+  } > "$CONF.tmp"
   chmod 0600 "$CONF.tmp"
   mv "$CONF.tmp" "$CONF"
 }
@@ -95,25 +140,35 @@ install_program() {
   systemctl daemon-reload
 }
 
+need_conf() { [ -f "$CONF" ] || die "No hay configuración en $CONF: instala primero con --url."; }
+
 case "$MODE" in
   set-token)
-    [ -f "$CONF" ] || die "No hay configuración en $CONF: instala primero con --url."
-    URL="$(sed -n 's/^SNF_URL=//p' "$CONF" | head -n1)"
+    need_conf
     read_token
-    write_conf "$URL" "$TOKEN"
+    [ "$CF_ACCESS" = "yes" ] && read_cf_access
+    write_conf "$(existing SNF_URL)" "$TOKEN"
     say "Token actualizado."
     ;;
+  cf-access)
+    need_conf
+    read_cf_access
+    install_program   # el envío del token de Access llegó en 1.0.2: se actualiza el programa de paso
+    write_conf "$(existing SNF_URL)" "$(existing SNF_TOKEN)"
+    say "Token de Cloudflare Access guardado."
+    ;;
   upgrade)
-    [ -f "$CONF" ] || die "No hay configuración en $CONF: instala primero con --url."
+    need_conf
     install_program
     say "Programa actualizado a $(python3 "$PREFIX/pulse.py" version)."
     ;;
   install)
-    if [ -z "$URL" ] && [ -f "$CONF" ]; then URL="$(sed -n 's/^SNF_URL=//p' "$CONF" | head -n1)"; fi
+    if [ -z "$URL" ] && [ -f "$CONF" ]; then URL="$(existing SNF_URL)"; fi
     [ -n "$URL" ] || die "Indica la dirección de SubNetFlow: --url https://subnetflow.ejemplo.com"
     URL="${URL%/}"
     [[ "$URL" =~ ^https://[^/[:space:]]+$ ]] || die "La dirección debe ser https://dominio, sin ruta."
     read_token   # antes de tocar nada: sin token válido no se instala
+    [ "$CF_ACCESS" = "yes" ] && read_cf_access
     install_program
     write_conf "$URL" "$TOKEN"
     ;;
@@ -126,6 +181,6 @@ if python3 "$PREFIX/pulse.py" test; then
   say "Servicio activo. Registro: journalctl -u subnetflow-pulse -f"
 else
   echo "⚠ La prueba falló: el servicio no se activó. La configuración quedó guardada." >&2
-  echo "  Revisa la dirección y la hora del nodo (NTP). Para corregir el token: ./install.sh --set-token" >&2
+  echo "  Token: ./install.sh --set-token · Cloudflare Access: ./install.sh --cf-access · Hora del nodo: chronyc tracking" >&2
   exit 1
 fi
