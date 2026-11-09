@@ -92,8 +92,8 @@ read_cf_access() {
   for i in 1 2 3; do
     read -r -p "Client ID (termina en .access): " id < /dev/tty || true
     id="$(printf '%s' "$id" | tr -d ' \t\r\n')"
-    [[ "$id" =~ ^[0-9a-f]{32}\.access$ ]] && break
-    echo "✗ El Client ID tiene 32 caracteres hexadecimales y termina en .access (intento $i de 3)." >&2
+    [[ "$id" =~ ^[A-Za-z0-9._-]{8,200}\.access$ ]] && break
+    echo "✗ El Client ID termina en .access (cópialo completo desde Cloudflare; intento $i de 3)." >&2
     id=""
   done
   [ -n "$id" ] || die "No se recibió un Client ID válido."
@@ -101,8 +101,10 @@ read_cf_access() {
     read -r -s -p "Client Secret (no se muestra): " secret < /dev/tty || true
     echo >&2
     secret="$(printf '%s' "$secret" | tr -d ' \t\r\n')"
-    [[ "$secret" =~ ^[0-9a-f]{64}$ ]] && break
-    echo "✗ El Client Secret tiene 64 caracteres hexadecimales (intento $i de 3)." >&2
+    # 1.0.3: no se exige un formato (1.0.2 pedía 64 hexadecimales y rechazaba secretos reales). Si es incorrecto, lo
+    # dirá Cloudflare en la prueba de conexión.
+    [ "${#secret}" -ge 16 ] && [ "${#secret}" -le 512 ] && break
+    echo "✗ No llegó el Client Secret completo (${#secret} caracteres). Pégalo de nuevo (intento $i de 3)." >&2
     secret=""
   done
   [ -n "$secret" ] || die "No se recibió un Client Secret válido."

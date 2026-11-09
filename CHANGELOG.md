@@ -1,5 +1,10 @@
 # Changelog — SubNetFlow Pulse
 
+## 1.0.3 — 2026-11-09
+
+### Corregido
+- **`./install.sh --cf-access` rechazaba el Client Secret real de Cloudflare:** exigía 64 caracteres hexadecimales, un formato supuesto que Cloudflare no garantiza. Ahora acepta cualquier secreto de 16 a 512 caracteres sin espacios, y si es incorrecto lo dice la prueba de conexión. El Client ID solo tiene que terminar en `.access`. Si no llega completo, el aviso dice cuántos caracteres se recibieron.
+
 ## 1.0.2 — 2026-11-09
 
 ### Nuevo

@@ -27,7 +27,7 @@ import urllib.parse
 import urllib.request
 import zlib
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 NAME = "subnetflow-pulse"
 PROTO = "snf-pulse-v1"
 SCHEMA = "subnetflow-node-1"
